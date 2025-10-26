@@ -1,0 +1,46 @@
+Task B — Button Press Type Detection
+
+Author: Malaika Batool
+Reg No: 23-NTU-CS-1044 Date: 26-10-2025
+
+1. Objective
+
+Detect short and long button presses using an ESP32:
+
+Short press (<1.5 s): Toggle LED
+
+Long press (>1.5 s): Activate buzzer
+
+OLED shows press type and current state
+
+2. Hardware Setup
+Component	Pin	Function
+Button	GPIO14	Input (press detection)
+LED	GPIO16	Toggle on short press
+Buzzer	GPIO25	Beep on long press
+OLED	SDA → GPIO21, SCL → GPIO22	Display messages
+
+All buttons use INPUT_PULLUP mode.
+
+3. Software Overview
+
+Uses Adafruit_SSD1306 and Adafruit_GFX for OLED.
+
+Detects press duration using millis().
+
+If <1500 ms: toggles LED and shows “Short Press”.
+
+If ≥1500 ms: sounds buzzer and shows “Long Press”.
+
+Includes debounce to prevent false readings.
+
+4. Testing
+
+✅ OLED shows “Ready…” at start
+✅ Short press → LED toggles
+✅ Long press → Buzzer sounds
+✅ Messages update correctly
+
+5. Summary
+
+A simple project demonstrating button timing, digital I/O, buzzer control, and OLED feedback on ESP32.

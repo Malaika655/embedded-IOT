@@ -1,0 +1,331 @@
+1. Purpose
+
+The purpose of this project is to implement an LED mode controller using an ESP32 (or compatible board) where:
+
+There are three LEDs connected to three GPIO pins.
+
+Two push-buttons (Button A and Button B) control the operational mode.
+
+An OLED display shows the current mode name.
+
+The system supports four distinct modes:
+
+Both LEDs OFF
+
+Alternate Blink (LED2 & LED3)
+
+Both ON
+
+Fade (LED1 only)
+
+Button A cycles through the modes.
+
+Button B resets the mode back to 0 (both OFF).
+In short, it demonstrates GPIO control, digital input (buttons), analog output (PWM fade), and I²C OLED display usage.
+
+2. Hardware Design / Pin Assignment
+Components
+
+Microcontroller board: typically an ESP32 (since GPIO numbers match)
+
+Three LEDs (with appropriate current-limiting resistors)
+
+Two push-buttons (configured with internal pull-ups)
+
+An OLED display (SSD1306) connected via I²C (SDA & SCL)
+
+Pin assignment
+
+LED1 → GPIO 16 (used for the Fade mode)
+
+LED2 → GPIO 17 (used for blinking)
+
+LED3 → GPIO 18 (used for blinking or ON mode)
+
+Button A → GPIO 14 (cycles modes)
+
+Button B → GPIO 27 (resets mode)
+
+OLED display:
+
+SDA → GPIO 21
+
+SCL → GPIO 22
+
+I²C address: 0x3C
+
+Wiring notes
+
+Buttons use INPUT_PULLUP mode: so wiring one side of button to the pin, the other side to ground. When pressed, pin reads LOW.
+
+LEDs should have resistors (e.g., ~220 Ω) in series to limit current.
+
+OLED requires proper I²C connections and power (typically 3.3 V or 5 V depending on board/OLED module).
+
+Ensure that the pin assignments are compatible with the board and that no conflicts exist with other peripherals.
+
+3. Software Design / Code Explanation
+
+Below is an annotated walkthrough of the code.
+
+/*
+   =====================================================
+   Title   : Task A — LED Mode Controller (Final 3 LEDs)
+   Author  : Malaika batool
+   Reg No. : 23-NTU-CS-1044
+   Date    : 26/10/2025
+   Description:
+     Button A (GPIO14): Cycles LED modes
+       1. Both OFF
+       2. Alternate Blink
+       3. Both ON
+       4. Fade (LED1 only)
+     Button B (GPIO27): Resets mode
+     OLED (GPIO21 SDA, 22 SCL): Displays mode info
+   =====================================================
+*/
+
+Libraries and OLED setup
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_ADDR 0x3C
+#define SDA_PIN 21
+#define SCL_PIN 22
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+
+We include the Wire library for I²C communication.
+
+Adafruit_GFX and Adafruit_SSD1306 libraries are used for the OLED display.
+
+Screen size defined for 128×64.
+
+I²C address set to 0x3C (common for SSD1306).
+
+We initialize display object with the dimensions and I²C interface.
+
+Pin definitions and variables
+#define LED1 16  // fade
+#define LED2 17  // blink
+#define LED3 18  // on/off
+#define BUTTON_A 14
+#define BUTTON_B 27
+int mode = 0;
+unsigned long lastPress = 0;
+
+
+LED1 is assigned to GPIO 16, LED2 to 17, LED3 to 18.
+
+Buttons assigned to 14 (A) and 27 (B).
+
+mode keeps track of the current mode (0,1,2,3).
+
+lastPress tracks the time of the last button press to implement debouncing (simple 300 ms window).
+
+Displaying the mode
+void showMode() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 10);
+  display.print("Mode: ");
+  if (mode == 0) display.println("BOTH OFF");
+  if (mode == 1) display.println("ALT BLINK");
+  if (mode == 2) display.println("BOTH ON");
+  if (mode == 3) display.println("FADE");
+  display.display();
+}
+
+
+Clears the OLED screen, sets text size and color.
+
+Writes “Mode: ” then prints the current mode label.
+
+Finally calls display.display() to push buffer to screen.
+
+Makes it user-friendly by showing which mode is active.
+
+Setup routine
+void setup() {
+  Wire.begin(SDA_PIN, SCL_PIN);
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+  pinMode(BUTTON_A, INPUT_PULLUP);
+  pinMode(BUTTON_B, INPUT_PULLUP);
+  showMode();
+}
+
+
+Begins I²C on GPIO 21 (SDA) and GPIO 22 (SCL).
+
+Initializes the OLED display with display.begin().
+
+Sets LEDs as OUTPUT and buttons as INPUT_PULLUP.
+
+Calls showMode() once to display initial mode (mode = 0).
+
+Main loop
+void loop() {
+  if (digitalRead(BUTTON_A) == LOW && millis() - lastPress > 300) {
+    mode = (mode + 1) % 4;
+    showMode();
+    lastPress = millis();
+  }
+  if (digitalRead(BUTTON_B) == LOW && millis() - lastPress > 300) {
+    mode = 0;
+    showMode();
+    lastPress = millis();
+  }
+
+  static int fade = 0;
+  static int dir = 1;
+  switch (mode) {
+    case 0: // both off
+      digitalWrite(LED1, LOW);
+      digitalWrite(LED2, LOW);
+      digitalWrite(LED3, LOW);
+      break;
+
+    case 1: // alternate blink
+      digitalWrite(LED2, millis() / 500 % 2);
+      digitalWrite(LED3, !digitalRead(LED2));
+      digitalWrite(LED1, LOW);
+      break;
+
+    case 2: // both on
+      digitalWrite(LED1, HIGH);
+      digitalWrite(LED2, HIGH);
+      digitalWrite(LED3, HIGH);
+      break;
+
+    case 3: // fade on LED1
+      fade += dir * 10;
+      if (fade <= 0 || fade >= 255) dir = -dir;
+      analogWrite(LED1, fade);
+      digitalWrite(LED2, LOW);
+      digitalWrite(LED3, LOW);
+      delay(10);
+      break;
+  }
+}
+
+Button handling
+
+If Button A is pressed (pin reads LOW) and more than 300 ms since last press, mode increments (with wrap via %4).
+
+If Button B is pressed (and time condition) then mode resets to 0.
+
+After change, showMode() runs and lastPress updated.
+
+Mode operations
+
+Mode 0 (BOTH OFF): All LEDs set LOW → off.
+
+Mode 1 (ALT BLINK):
+
+LED2 toggles every 500 ms: millis()/500 %2.
+
+LED3 is the inverse of LED2.
+
+LED1 remains off.
+
+Mode 2 (BOTH ON): All three LEDs set HIGH → constant on.
+
+Mode 3 (FADE):
+
+A static fade value moves up or down (by dir * 10) each loop iteration.
+
+When fade hits 0 or 255, dir flips to reverse ramp.
+
+analogWrite(LED1, fade): LED1 fades in/out.
+
+LED2 and LED3 remain off.
+
+A small delay(10) adds pace to fading.
+
+4. Testing & Validation
+Initial check
+
+On startup, the OLED should show “Mode: BOTH OFF”.
+
+None of the LEDs should light.
+
+Button A functionality
+
+Press Button A: OLED should update to “Mode: ALT BLINK” and LED2/LED3 alternate blinking every ~500 ms. LED1 remains off.
+
+Press again: “Mode: BOTH ON”, all LEDs on.
+
+Press again: “Mode: FADE”, only LED1 pulses in brightness, LED2/LED3 off.
+
+Press again: wraps back to “Mode: BOTH OFF”.
+
+Button B functionality
+
+At any mode, pressing Button B resets to Mode 0 (BOTH OFF) immediately, with OLED update and LEDs off.
+
+Edge cases & robustness
+
+Buttons are debounced via simple 300 ms time check. Verify that rapid presses don’t cause mode skipping.
+
+Ensure the fade loop executes smoothly, without blocking the button detection for too long (the small delay helps).
+
+Check LED brightness and wiring—if too dim or too bright, adjust resistor values.
+
+Ensure OLED I²C works reliably: display initial text, then updates on mode changes.
+
+Simulation on Wokwi
+
+Run the simulation and verify that the correct GPIO pins correspond to the LEDs/buttons as assigned.
+
+Watch console and visuals: On the simulator you should see LED states change, and OLED screen updating.
+
+5. Usage Guide
+
+Power up the board and connect the hardware as per pin assignments.
+
+On startup you’ll see the display show “Mode: BOTH OFF”.
+
+To cycle through modes, press Button A each time.
+
+To reset to mode 0 at any time, press Button B.
+
+Modes and behavior explained:
+
+Mode 0: All LEDs off → energy-saving/off state.
+
+Mode 1: LED2 & LED3 blink alternately → visual indicator mode.
+
+Mode 2: All LEDs ON → constant on status.
+
+Mode 3: LED1 fades in/out → eye-catching or decorative mode.
+
+The OLED always displays the current mode label for clarity.
+
+6. Extensions & Improvements
+
+Here are some ideas for further enhancement:
+
+Add more modes (e.g., chasing LEDs, random blink, PWM on multiple LEDs).
+
+Use interrupts for button presses instead of polling for more responsive behavior.
+
+Add long-press detection for additional actions (e.g., toggle speed, brightness).
+
+Store the last mode in non-volatile memory (EEPROM) so upon restart it resumes previous mode.
+
+Add speed/pattern adjustable via potentiometer or second set of buttons.
+
+Expand the OLED display to show more status (e.g., mode number, brightness value, timer).
+
+Integrate a real-time clock or sensor to trigger mode changes automatically based on time or environment.
+
+7. Summary
+
+This project successfully demonstrates a compact controller for LEDs with multiple modes, user interaction via buttons, real-time feedback via an OLED display, and usage of both digital and analog (PWM) pins. The structure is clear: initialisation, input handling, mode logic, output control. It is well-suited as a teaching example of embedded systems design on an ESP32-type board, combining input, output, display and control logic.
