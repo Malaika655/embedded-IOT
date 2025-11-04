@@ -1,16 +1,10 @@
-/*
-  =====================================================
-  Title   : Task B — Button Press Type Detection
-  Author  : MALAIKA BATOOL
-  Reg No. : 23-NTU-CS-1044
-  Date    : 26/10/2025
-  Description:
-    Single button (GPIO14):
-      - Short press -> Toggle LED
-      - Long press (>1.5s) -> Play buzzer tone
-    OLED (GPIO21 SDA, GPIO22 SCL) displays event
-  =====================================================
-*/
+// name : malaika batool
+//reg number: 23-ntu-cs-1044
+
+// ESP32 Wokwi Task B 
+// Short press → alternate LED toggle (LED1 and LED2)
+// Long press (>1.5s) → buzzer tone only
+// OLED displays event type
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -19,78 +13,87 @@
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_ADDR 0x3C
-#define SDA_PIN 21
-#define SCL_PIN 22
-
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// pins
-#define LED_PIN 16
-#define BUZZER_PIN 25
-#define BUTTON_PIN 14
+#define BUTTON_PIN 15
+#define LED1_PIN 2
+#define LED2_PIN 5
+#define BUZZER_PIN 4
 
-// press timing
 unsigned long pressStart = 0;
-bool buttonState = HIGH;
-bool ledState = LOW;
+bool buttonPressed = false;
+int toggleState = 0; // 0 → LED1 ON, LED2 OFF; 1 → LED1 OFF, LED2 ON
 
-void showMsg(const char* msg) {
+void setup() {
+  Serial.begin(115200);  // For debugging
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Initialize OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED not found!");
+    while (true);
+  }
+
+  // Initial display and LED state
+  digitalWrite(LED1_PIN, LOW);
+  digitalWrite(LED2_PIN, LOW);
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 10);
-  display.println(msg);
+  display.setCursor(0, 0);
+  display.print("Ready...");
   display.display();
-}
-
-void beep(unsigned int freq = 1000, unsigned long duration = 400) {
-  unsigned long endTime = millis() + duration;
-  unsigned long halfPeriod = 1000000L / (freq * 2);
-  while (millis() < endTime) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    delayMicroseconds(halfPeriod);
-    digitalWrite(BUZZER_PIN, LOW);
-    delayMicroseconds(halfPeriod);
-  }
-}
-
-void setup() {
-  Wire.begin(SDA_PIN, SCL_PIN);
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  showMsg("Ready... press button");
+  Serial.println("Setup complete");
 }
 
 void loop() {
-  int readState = digitalRead(BUTTON_PIN);
+  int buttonState = digitalRead(BUTTON_PIN);
 
-  // button pressed
-  if (readState == LOW && buttonState == HIGH) {
-    pressStart = millis();
-  }
-
-  // button released
-  if (readState == HIGH && buttonState == LOW) {
-    unsigned long pressDuration = millis() - pressStart;
-
-    if (pressDuration < 1500) {
-      // short press -> toggle led
-      ledState = !ledState;
-      digitalWrite(LED_PIN, ledState);
-      if (ledState)
-        showMsg("Short press: LED ON");
-      else
-        showMsg("Short press: LED OFF");
-    } else {
-      // long press -> buzzer tone
-      showMsg("Long press detected");
-      beep();
+  if (buttonState == LOW && !buttonPressed) {
+    // Button just pressed - add debounce
+    delay(50);  // Debounce for reliability
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      buttonPressed = true;
+      pressStart = millis();
+      Serial.println("Button pressed");
     }
   }
 
-  buttonState = readState;
-  delay(10);
+  if (buttonState == HIGH && buttonPressed) {
+    // Button released - add debounce
+    delay(50);  // Debounce for reliability
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+      buttonPressed = false;
+      unsigned long pressDuration = millis() - pressStart;
+      Serial.print("Press duration: ");
+      Serial.println(pressDuration);
+
+      display.clearDisplay();
+      display.setCursor(0, 0);
+
+      if (pressDuration > 1500) {
+        // Long press = buzzer tone only (no LED toggle)
+        display.print("Long Press: Buzzer");
+        tone(BUZZER_PIN, 1000, 500);
+        Serial.println("Long press: Buzzer only");
+      } else {
+        // Short press = alternate LEDs
+        display.print("Short Press: LEDs Toggled");
+        toggleState = !toggleState;
+        if (toggleState == 0) {
+          digitalWrite(LED1_PIN, HIGH);
+          digitalWrite(LED2_PIN, LOW);
+        } else {
+          digitalWrite(LED1_PIN, LOW);
+          digitalWrite(LED2_PIN, HIGH);
+        }
+        Serial.println("Short press: LEDs toggled");
+      }
+
+      display.display();
+    }
+  }
 }
